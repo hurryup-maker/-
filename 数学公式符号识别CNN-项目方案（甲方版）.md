@@ -1,6 +1,8 @@
 # 数学公式符号识别系统 —— 项目技术方案
 
 **适用范围**：数学公式符号识别 CNN 神经网络的设计、开发、训练与部署
+方案参考了NeuroTeX的模型设计架构，其使用ResNet-18 CNN作为编码器，配合一个Transformer解码器，并且包含数据生成、训练、推理的完整代码，但是在CNN输出的图片特征转化为transform架构的过程中采用了裁剪转化的方式导致损失了一些关键的context，当其面对一些长文本的图片时会出现错误，在其基础上我们做了最关键的处理CNN卷积层和transform层的数据转化衔接。
+同时由于我们算力资源比较紧张，为了保持一定的模型能力，我们查找了Mini-CoMER的结构，采用了CNN编码器+Transformer解码器的结构，还加入了一个注意力精炼模块（ARM） 来优化效果，非常适合在资源有限的环境下训练。我们设置了两个任务，任务A是做纯classfier，只做CNN卷积的softmax分类，不做seq2seq的输出，训练难度小，任务2是做全公式的手写体识别，输出latex码，训练难度，模型设计较大，前期我们会先做classfier，后面根据时间、成本来考虑是否推进任务B。
 
 ---
 
@@ -205,7 +207,7 @@ LaTeX 不按字符切分，须先 tokenize：
    ▼
 logits [B, N_classes] → CrossEntropy
 ```
-
+##当做任务B时会减少最大池化，直接将CNN输出转化为sequence输入给接下来的transform层
 ### 5.2 任务 B：CNN 编码器 + Transformer 解码器
 
 ```
@@ -217,7 +219,7 @@ logits [B, N_classes] → CrossEntropy
    │ 线性投影 512 → 256
    │ 加 2D 正弦位置编码（行 + 列）
    ▼
-Transformer 解码器（4 层、8 头、d_model=256、d_ff=1024、自回归）
+Transformer 解码器（4 层、8 头、d_model=256、d_ff=1024、自回归、具体层数会根据接下来的实际情况进行增减）
    ▼
 每步输出 [B, V] logits → 训练 teacher forcing / 推理 greedy 或 beam
 ```
@@ -422,6 +424,7 @@ M4                       ████
 | 结构错误（frac 分子分母错位） | 按结构 token 均衡采样 + bad case 驱动增广 |
 | 单卡显存不足 | batch 64→32 + grad_accum 2；bf16 减半显存 |
 | 类别长尾（低频符号） | 类别加权采样 / focal loss（任务 A） |
+主要会通过一些自己标注和噪音数据集来进行训练，增强模型抗干扰的能力
 
 ---
 
